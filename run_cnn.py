@@ -9,16 +9,17 @@ import time
 from datetime import timedelta
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from sklearn import metrics
 
 from cnn_model import TCNNConfig, TextCNN
-from data.cnews_loader import read_vocab, read_category, batch_iter, process_file, build_vocab
+from data.loader import read_vocab, read_category, batch_iter, process_file, build_vocab
 
 base_dir = 'data'
-train_dir = os.path.join(base_dir, 'train_data')
-test_dir = os.path.join(base_dir, 'test_data')
-val_dir = os.path.join(base_dir, 'val_data')
+train_dir = os.path.join(base_dir, 'train_data_w')
+test_dir = os.path.join(base_dir, 'test_data_w')
+val_dir = os.path.join(base_dir, 'val_data_w')
 vocab_dir = os.path.join(base_dir, 'vocab.txt')
 
 save_dir = 'checkpoints/textcnn'
@@ -198,9 +199,13 @@ if __name__ == '__main__':
     config = TCNNConfig()
     if not os.path.exists(vocab_dir):  # 如果不存在词汇表，重建
         build_vocab(train_dir, vocab_dir, config.vocab_size)
-    categories, cat_to_id = read_category()
+    categories = [str(a) for a in list(set(pd.read_csv(train_dir,header=None,sep='\t')[0]))]
+    cat_to_id = read_category(categories)
     words, word_to_id = read_vocab(vocab_dir)
-    config.vocab_size = len(words)
+    if config.vocab_size != len(words):
+        print('Your vocab_size of config is different from vocab_size of vocab_file！')
+        print('You can clean vocab_file or reset vocab_size of config.')
+        sys.exit()
     model = TextCNN(config)
 
     if sys.argv[1] == 'train':

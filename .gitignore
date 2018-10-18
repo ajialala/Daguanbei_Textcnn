@@ -1,2 +1,7 @@
 checkpoints/textcnn/
 checkpoints/textrnn/
+data/train_data_w
+data/val_data_w
+data/test_data_w
+data/train_set_cnn
+tensorboard/

@@ -5,3 +5,5 @@ data/val_data_w
 data/test_data_w
 data/train_set_cnn
 tensorboard/
+.idea/
+data/__pycache__/

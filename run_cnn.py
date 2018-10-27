@@ -22,7 +22,7 @@ test_dir = os.path.join(base_dir, 'test_data_w')
 val_dir = os.path.join(base_dir, 'val_data_w')
 vocab_dir = os.path.join(base_dir, 'vocab.txt')
 
-save_dir = 'checkpoints/textcnn'
+save_dir = 'checkpoints/textcnn/'
 save_path = os.path.join(save_dir, 'best_validation')  # 最佳验证结果保存路径
 
 
@@ -56,6 +56,8 @@ def evaluate(sess, x_, y_):
         total_acc += acc * batch_len
 
     return total_loss / data_len, total_acc / data_len
+
+
 def load_model(sess, path):
     saver = tf.train.Saver()
     checkpoint = tf.train.get_checkpoint_state(path)
@@ -65,10 +67,12 @@ def load_model(sess, path):
     else:
         print("Could not find old weights!")
     return saver
+
+
 def train():
     print("Configuring TensorBoard and Saver...")
-    # 配置 Tensorboard，重新训练时，请将tensorboard文件夹删除，不然图会覆盖
-    tensorboard_dir = 'tensorboard/textcnn'
+    # 配置 Tensorboard，每次训练的结果保存在以日期命名的文件夹中。
+    tensorboard_dir = 'tensorboard/textcnn' + '/' + time.strftime('%Y%m%d%H%M',time.localtime(time.time()))
     if not os.path.exists(tensorboard_dir):
         os.makedirs(tensorboard_dir)
 
@@ -76,12 +80,6 @@ def train():
     tf.summary.scalar("accuracy", model.acc)
     merged_summary = tf.summary.merge_all()
     writer = tf.summary.FileWriter(tensorboard_dir)
-    # 导入权重
-    session = tf.Session()
-    session.run(tf.global_variables_initializer())
-    save_dir = 'checkpoints/textcnn'
-    save_path = os.path.join(save_dir, 'best_validation')
-    saver = load_model(session, save_dir)
 
     print("Loading training and validation data...")
     # 载入训练集与验证集
@@ -94,6 +92,8 @@ def train():
     # 创建session
     session = tf.Session()
     session.run(tf.global_variables_initializer())
+    # 导入权重
+    saver = load_model(session, save_dir)
     writer.add_graph(session.graph)
 
     print('Training and evaluating...')
@@ -101,8 +101,8 @@ def train():
     total_batch = 0  # 总批次
     best_acc_val = 0.0  # 最佳验证集准确率
     last_improved = 0  # 记录上一次提升批次
-#下面是古剑峰修改，5000--->500000
-    require_improvement = 500000  # 如果超过1000轮未提升，提前结束训练
+    # 下面是古剑峰修改，5000--->500000
+    require_improvement = 1000  # 如果超过1000轮未提升，提前结束训练
 
     flag = False
     for epoch in range(config.num_epochs):

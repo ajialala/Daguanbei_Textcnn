@@ -7,3 +7,4 @@ data/train_set_cnn
 tensorboard/
 .idea/
 data/__pycache__/
+temp/

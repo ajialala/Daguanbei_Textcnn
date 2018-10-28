@@ -6,6 +6,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import pickle
 from datetime import timedelta
 
 import numpy as np
@@ -24,6 +25,8 @@ vocab_dir = os.path.join(base_dir, 'vocab.txt')
 
 save_dir = 'checkpoints/textcnn/'
 save_path = os.path.join(save_dir, 'best_validation')  # 最佳验证结果保存路径
+
+temp_dir = 'temp/'
 
 
 def get_time_dif(start_time):
@@ -65,13 +68,14 @@ def load_model(sess, path):
         saver.restore(sess, checkpoint.model_checkpoint_path)
         print("Successfully loaded:", checkpoint.model_checkpoint_path)
     else:
+        sess.run(tf.global_variables_initializer())
         print("Could not find old weights!")
     return saver
 
 
 def train():
     print("Configuring TensorBoard and Saver...")
-    # 配置 Tensorboard，每次训练的结果保存在以日期命名的文件夹中。
+    # 配置 Tensorboard，每次训练的结果保存在以日期时间命名的文件夹中。
     tensorboard_dir = 'tensorboard/textcnn' + '/' + time.strftime('%Y%m%d%H%M',time.localtime(time.time()))
     if not os.path.exists(tensorboard_dir):
         os.makedirs(tensorboard_dir)
@@ -84,39 +88,52 @@ def train():
     print("Loading training and validation data...")
     # 载入训练集与验证集
     start_time = time.time()
-    x_train, y_train = process_file(train_dir, word_to_id, cat_to_id, config.seq_length)
-    x_val, y_val = process_file(val_dir, word_to_id, cat_to_id, config.seq_length)
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    if not os.path.exists(temp_dir+'x_train.pkl'):
+        x_train, y_train = process_file(train_dir, word_to_id, cat_to_id, config.seq_length)
+        x_val, y_val = process_file(val_dir, word_to_id, cat_to_id, config.seq_length)
+        pickle.dump(x_train, open(temp_dir+'x_train.pkl', 'wb'))
+        pickle.dump(y_train, open(temp_dir+'y_train.pkl', 'wb'))
+        pickle.dump(x_val, open(temp_dir+'x_val.pkl', 'wb'))
+        pickle.dump(y_val, open(temp_dir+'y_val.pkl', 'wb'))
+    else:
+        x_train = pickle.load(open(temp_dir+'x_train.pkl', 'rb'))
+        y_train = pickle.load(open(temp_dir+'y_train.pkl', 'rb'))
+        x_val = pickle.load(open(temp_dir+'x_val.pkl', 'rb'))
+        y_val = pickle.load(open(temp_dir+'y_val.pkl', 'rb'))
     time_dif = get_time_dif(start_time)
     print("Time usage:", time_dif)
 
+    total_batch = tf.Variable(0, trainable=False) # 总批次
+
     # 创建session
     session = tf.Session()
-    session.run(tf.global_variables_initializer())
     # 导入权重
     saver = load_model(session, save_dir)
+
     writer.add_graph(session.graph)
 
     print('Training and evaluating...')
     start_time = time.time()
-    total_batch = 0  # 总批次
     best_acc_val = 0.0  # 最佳验证集准确率
-    last_improved = 0  # 记录上一次提升批次
-    # 下面是古剑峰修改，5000--->500000
+    last_improved = session.run(total_batch)  # 记录上一次提升批次
     require_improvement = 1000  # 如果超过1000轮未提升，提前结束训练
 
     flag = False
     for epoch in range(config.num_epochs):
         print('Epoch:', epoch + 1)
         batch_train = batch_iter(x_train, y_train, config.batch_size)
+
         for x_batch, y_batch in batch_train:
             feed_dict = feed_data(x_batch, y_batch, config.dropout_keep_prob)
 
-            if total_batch % config.save_per_batch == 0:
+            if session.run(total_batch) % config.save_per_batch == 0:
                 # 每多少轮次将训练结果写入tensorboard scalar
                 s = session.run(merged_summary, feed_dict=feed_dict)
-                writer.add_summary(s, total_batch)
+                writer.add_summary(s, session.run(total_batch))
 
-            if total_batch % config.print_per_batch == 0:
+            if session.run(total_batch) % config.print_per_batch == 0:
                 # 每多少轮次输出在训练集和验证集上的性能
                 feed_dict[model.keep_prob] = 1.0
                 loss_train, acc_train = session.run([model.loss, model.acc], feed_dict=feed_dict)
@@ -125,7 +142,7 @@ def train():
                 if acc_val > best_acc_val:
                     # 保存最好结果
                     best_acc_val = acc_val
-                    last_improved = total_batch
+                    last_improved = session.run(total_batch)
                     saver.save(sess=session, save_path=save_path)
                     improved_str = '*'
                 else:
@@ -134,18 +151,20 @@ def train():
                 time_dif = get_time_dif(start_time)
                 msg = 'Iter: {0:>6}, Train Loss: {1:>6.2}, Train Acc: {2:>7.2%},' \
                       + ' Val Loss: {3:>6.2}, Val Acc: {4:>7.2%}, Time: {5} {6}'
-                print(msg.format(total_batch, loss_train, acc_train, loss_val, acc_val, time_dif, improved_str))
+                print(msg.format(session.run(total_batch), loss_train, acc_train, loss_val, acc_val, time_dif, improved_str))
 
             session.run(model.optim, feed_dict=feed_dict)  # 运行优化
-            total_batch += 1
+            session.run(tf.assign(total_batch, total_batch+1))
+            # total_batch += 1
 
-            if total_batch - last_improved > require_improvement:
+            if session.run(total_batch) - last_improved > require_improvement:
                 # 验证集正确率长期不提升，提前结束训练
                 print("No optimization for a long time, auto-stopping...")
                 flag = True
                 break  # 跳出循环
         if flag:  # 同上
             break
+    session.close()
 
 
 def test():

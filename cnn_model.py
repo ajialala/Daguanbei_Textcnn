@@ -1,7 +1,7 @@
 # coding: utf-8
 
 import tensorflow as tf
-
+from sklearn import metrics
 
 class TCNNConfig(object):
     """CNN配置参数"""
@@ -72,3 +72,9 @@ class TextCNN(object):
             # 准确率
             correct_pred = tf.equal(tf.argmax(self.input_y, 1), self.y_pred_cls)
             self.acc = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+        with tf.name_scope('F1'):
+            # 召回率
+            self.F1 = metrics.f1_score(tf.argmax(self.input_y, 1), self.y_pred_cls, average='macro')
+            self.precision = metrics.precision_score(tf.argmax(self.input_y, 1), self.y_pred_cls, average='macro')
+            self.recall = metrics.recall_score(tf.argmax(self.input_y, 1), self.y_pred_cls, average='macro')

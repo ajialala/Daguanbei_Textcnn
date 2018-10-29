@@ -48,7 +48,6 @@ def read_vocab(vocab_dir):
 
 def read_category(categories):
     """读取分类目录，固定"""
-    # categories = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
 
     cat_to_id = dict(zip(categories, range(len(categories))))
 
@@ -88,4 +87,9 @@ def batch_iter(x, y, batch_size=64):
     for i in range(num_batch):
         start_id = i * batch_size
         end_id = min((i + 1) * batch_size, data_len)
+        # yield 的作用就是把一个函数变成一个 generator，带有 yield 的函数不再是一个普通函数，
+        # Python 解释器会将其视为一个 generator，调用 batch_iter 不会执行 batch_iter 函数，
+        # 而是返回一个 iterable 对象！在 for 循环执行时，每次循环都会执行 batch_iter 函数内部的代码，
+        # 执行到 yield 时，batch_iter 函数就返回一个迭代值，下次迭代时，代码从 yield 的下一条语句继续执行，
+        # 而函数的本地变量看起来和上次中断执行前是完全一样的，于是函数继续执行，直到再次遇到 yield。
         yield x_shuffle[start_id:end_id], y_shuffle[start_id:end_id]

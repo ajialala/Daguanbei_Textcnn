@@ -1,5 +1,6 @@
 checkpoints/textcnn/
 checkpoints/textrnn/
+checkpoints/eval_textcnn/
 data/train_data_w
 data/val_data_w
 data/test_data_w

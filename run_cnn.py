@@ -25,6 +25,7 @@ vocab_dir = os.path.join(base_dir, 'vocab.txt')
 
 save_dir = 'checkpoints/textcnn/'
 save_path = os.path.join(save_dir, 'best_validation')  # 最佳验证结果保存路径
+eval_save_dir = 'checkpoints/eval_textcnn/'
 
 temp_dir = 'temp/'
 
@@ -63,6 +64,7 @@ def train():
     best_acc_val = 0.0  # 最佳验证集准确率
     last_improved = session.run(total_batch)  # 记录上一次提升批次
     require_improvement = 1000  # 如果超过1000轮未提升，提前结束训练
+    saver_eval = tf.train.Saver(max_to_keep=5)
 
     flag = False
     for epoch in range(config.num_epochs):
@@ -80,22 +82,26 @@ def train():
             if session.run(total_batch) % config.print_per_batch == 0:
                 # 每多少轮次输出在训练集和验证集上的性能
                 feed_dict[model.keep_prob] = 1.0
-                loss_train, F1_train, _, _ = evaluate(session, model, x_train, y_train)
+                # loss_train, F1_train, _, _ = evaluate(session, model, x_train, y_train)
                 loss_val, F1, _, _ = evaluate(session, model, x_val, y_val)  # todo
+
+                saver_eval.save(sess=session, save_path=os.path.join(eval_save_dir, 'model.ckpt'), global_step=total_batch)
 
                 if F1 > best_acc_val:
                     # 保存最好结果
                     best_acc_val = F1
                     last_improved = session.run(total_batch)
-                    saver.save(sess=session, save_path=save_path)
+                    saver.save(sess=session, save_path=save_path, global_step=0)
                     improved_str = '*'
                 else:
                     improved_str = ''
 
                 time_dif = get_time_dif(start_time)
-                msg = 'Iter: {0:>6}, Train Loss: {1:>6.2}, Train F1: {2:>7.2%},' \
-                      + ' Val Loss: {3:>6.2}, Val F1: {4:>7.2%}, Time: {5} {6}'
-                print(msg.format(session.run(total_batch), loss_train, F1_train, loss_val, F1, time_dif, improved_str))
+                # msg = 'Iter: {0:>6}, Train Loss: {1:>6.2}, Train F1: {2:>7.2%},' \
+                #       + ' Val Loss: {3:>6.2}, Val F1: {4:>7.2%}, Time: {5} {6}'
+                # print(msg.format(session.run(total_batch), loss_train, F1_train, loss_val, F1, time_dif, improved_str))
+                msg = 'Iter: {0:>6}, Val Loss: {1:>6.2}, Val F1: {2:>7.2%}, Time: {3} {4}'
+                print(msg.format(session.run(total_batch), loss_val, F1, time_dif, improved_str))
 
             session.run(model.optim, feed_dict=feed_dict)  # 运行优化
             session.run(tf.assign(total_batch, total_batch+1))

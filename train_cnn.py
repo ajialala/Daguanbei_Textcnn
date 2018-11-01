@@ -6,12 +6,9 @@ from __future__ import print_function
 import os
 import sys
 import time
-import pickle
 
-import numpy as np
 import pandas as pd
 import tensorflow as tf
-from sklearn import metrics
 
 from cnn_model import TCNNConfig, TextCNN
 from helper import read_vocab, read_category, batch_iter, process_file, build_vocab, feed_data, evaluate
@@ -19,14 +16,13 @@ from helper import get_time_dif, load_model, load_data
 
 base_dir = 'data'
 train_dir = os.path.join(base_dir, 'train_data_w')
-test_dir = os.path.join(base_dir, 'test_data_w')
 val_dir = os.path.join(base_dir, 'val_data_w')
 vocab_dir = os.path.join(base_dir, 'vocab.txt')
 
 save_dir = 'checkpoints/textcnn/'
 save_path = os.path.join(save_dir, 'best_validation')  # 最佳验证结果保存路径
 
-temp_dir = 'temp/'
+temp_dir = 'temp/'               # 存放训练集和验证集的处理后文件
 
 
 def train():
@@ -48,13 +44,13 @@ def train():
     time_dif = get_time_dif(start_time)
     print("Time usage:", time_dif)
 
-    total_batch = tf.Variable(0, trainable=False) # 总批次
+    total_batch = tf.Variable(0, trainable=False) # 总批次，不可训练的变量
 
     # 创建session
     session = tf.Session()
     # 导入权重
     saver = load_model(session, save_dir)
-
+    # 图写入tensorboard
     writer.add_graph(session.graph)
 
     print('Training and evaluating...')
@@ -78,15 +74,14 @@ def train():
 
             if session.run(total_batch) % config.print_per_batch == 0:
                 # 每多少轮次输出在训练集和验证集上的性能
-                feed_dict[model.keep_prob] = 1.0
                 loss_train, F1_train, _, _ = evaluate(session, model, x_train, y_train)
-                loss_val, F1, _, _ = evaluate(session, model, x_val, y_val)  # todo
+                loss_val, F1_val, _, _ = evaluate(session, model, x_val, y_val)  # todo
 
-                if F1 > best_acc_val:
+                if F1_val > best_acc_val:
                     # 保存最好结果
-                    best_acc_val = F1
+                    best_acc_val = F1_val
                     last_improved = session.run(total_batch)
-                    saver.save(sess=session, save_path=save_path, global_step=0)
+                    saver.save(sess=session, save_path=save_path)
                     improved_str = '*'
                 else:
                     improved_str = ''
@@ -94,11 +89,11 @@ def train():
                 time_dif = get_time_dif(start_time)
                 msg = 'Iter: {0:>6}, Train Loss: {1:>6.2}, Train F1: {2:>7.2%},' \
                       + ' Val Loss: {3:>6.2}, Val F1: {4:>7.2%}, Time: {5} {6}'
-                print(msg.format(session.run(total_batch), loss_train, F1_train, loss_val, F1, time_dif, improved_str))
+                print(msg.format(session.run(total_batch), loss_train, F1_train, loss_val, F1_val, time_dif, improved_str))
 
 
             session.run(model.optim, feed_dict=feed_dict)  # 运行优化
-            session.run(tf.assign(total_batch, total_batch+1))
+            session.run(tf.assign(total_batch, total_batch+1))   # 用tf.assign迭代total_batch可以在saver中记录total_batch的变化
 
             if session.run(total_batch) - last_improved > require_improvement:
                 # 验证集正确率长期不提升，提前结束训练
@@ -110,52 +105,7 @@ def train():
     session.close()
 
 
-def test():
-    print("Loading test data...")
-    start_time = time.time()
-    x_test, y_test = process_file(test_dir, word_to_id, cat_to_id, config.seq_length)
-
-    session = tf.Session()
-    session.run(tf.global_variables_initializer())
-    saver = tf.train.Saver()
-    saver.restore(sess=session, save_path=save_path)  # 读取保存的模型
-
-    print('Testing...')
-    loss_test, acc_test = evaluate(session, x_test, y_test)
-    msg = 'Test Loss: {0:>6.2}, Test Acc: {1:>7.2%}'
-    print(msg.format(loss_test, acc_test))
-
-    batch_size = 128
-    data_len = len(x_test)
-    num_batch = int((data_len - 1) / batch_size) + 1
-
-    y_test_cls = np.argmax(y_test, 1)
-    y_pred_cls = np.zeros(shape=len(x_test), dtype=np.int32)  # 保存预测结果
-    for i in range(num_batch):  # 逐批次处理
-        start_id = i * batch_size
-        end_id = min((i + 1) * batch_size, data_len)
-        feed_dict = {
-            model.input_x: x_test[start_id:end_id],
-            model.keep_prob: 1.0
-        }
-        y_pred_cls[start_id:end_id] = session.run(model.y_pred_cls, feed_dict=feed_dict)
-
-    # 评估
-    print("Precision, Recall and F1-Score...")
-    print(metrics.classification_report(y_test_cls, y_pred_cls, target_names=categories))
-
-    # 混淆矩阵
-    print("Confusion Matrix...")
-    cm = metrics.confusion_matrix(y_test_cls, y_pred_cls)
-    print(cm)
-
-    time_dif = get_time_dif(start_time)
-    print("Time usage:", time_dif)
-
-
 if __name__ == '__main__':
-    if len(sys.argv) != 2 or sys.argv[1] not in ['train', 'test']:
-        raise ValueError("""usage: python run_cnn.py [train / test]""")
 
     print('Configuring CNN model...')
     config = TCNNConfig()
@@ -170,7 +120,4 @@ if __name__ == '__main__':
         sys.exit()
     model = TextCNN(config)
 
-    if sys.argv[1] == 'train':
-        train()
-    else:
-        test()
+    train()
